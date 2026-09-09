@@ -1,0 +1,114 @@
+trigger:
+- dev
+
+resources:
+- repo: self
+
+variables:
+  # Container registry service connection established during pipeline creation
+  - name: dockerRegistryServiceConnection  #ID of the service connection (nawonecommerceregistry)
+    value: 'fb67587d-6211-425e-ba68-7261394b0a1c'
+  - name: imageRepository
+    value: 'products-microservice'
+  - name: containerRegistry
+    value: 'nawonecommerceregistry.azurecr.io'
+  - name: dockerfilePath
+    value: '$(Build.SourcesDirectory)/ProductsMicroServiceAPI/Dockerfile'
+  - name: tag
+    value: '$(Build.BuildId)'
+  - name: vmImageName
+    value: 'ubuntu-latest'
+  - name: windowImageName
+    value: 'windows-latest'
+  - name: imageRepository
+    value: products-microservice
+  - name: aksClusterName
+    value: 'ecommerce-aks-cluster'
+  - name: aksServiceConnectionName
+    value: 'dev-ecommerce-aks-cluster-dev-1728475525366'
+  - name: deploymentFile
+    value: '$(Build.SourcesDirectory)/k8s/products-microservice-dev-deployment.yaml'
+  - name: kubernetesNamespace
+    value: 'dev'
+
+
+stages:
+- stage: Build
+  displayName: Build and push stage
+  jobs:
+  - job: Build
+    displayName: Docker Build
+    pool:
+      vmImage: $(vmImageName)
+    steps:
+    - task: Docker@2
+      displayName: Build and push an image to container registry
+      inputs:
+        command: buildAndPush
+        repository: $(imageRepository)
+        dockerfile: $(dockerfilePath)
+        containerRegistry: $(dockerRegistryServiceConnection)
+        tags: |
+          $(tag)
+        buildContext: $(Build.SourcesDirectory) # Tells Docker to build using the project's source code folder.
+
+- stage: Test
+  displayName: Test and Publish results stage
+  jobs:
+    - job: RunTest
+      displayName: Run Unit Tests
+      pool:
+        vmImage: $(windowImageName)
+      steps:
+        - checkout: self
+          displayName: Checkout source code
+      
+        - task: NuGetToolInstaller@1
+          displayName: Install NuGetTool
+        
+        - task: DotNetCoreCLI@2
+          displayName: Restore NuGet Packages
+          inputs:
+            command: 'restore'
+            projects: '**/eCommerceSolution.ProductsService.slnx'
+
+        - task: DotNetCoreCLI@2
+          displayName: Build Solution
+          inputs:
+            command: 'build'
+            projects: '**/eCommerceSolution.ProductsService.slnx'
+            arguments: '--configuration Debug'
+            configuration: 'debug'
+
+        - task: DotNetCoreCLI@2                     # Runs .NET CLI commands.
+          displayName: Run Unit Tests               # Name shown in the Azure DevOps pipeline.
+
+          inputs:
+            command: 'test'                         # Executes the 'dotnet test' command.
+            projects: '**/eCommerceSolution.ProductsService.slnx' # Finds and tests this solution file.
+            arguments: '--configuration Release --collect:"Code Coverage"' # Runs tests in Release mode and collects code coverage.
+            publishTestResults: true                # Publishes the test results to Azure DevOps.
+
+- stage: DeployToDev
+  displayName: Deploy to Dev
+  dependsOn: Test  #If Test is successfull, then only reach here
+  condition: and(succeeded('Build'), eq(variables['Build.SourceBranch'], 'refs/heads/dev'))
+            # Run this step only if the Build stage succeeded and the current branch is 'dev'.
+  jobs:
+  - deployment: DeploymentToDev
+    displayName: Deployment to Dev Environment
+    environment: dev
+    strategy:
+      runOnce:  #if the source code is merged into dev branch(eg-feature branchs are merged into dev branch) this particular job should be triggered only once.
+                #(For one merge,only one time)
+        deploy:
+            steps:
+            - checkout: self
+              displayName: Checkout source code
+        
+            - script: |
+                echo "Listing contents of k8s"
+                ls -l $(Build.SourcesDirectory)/k8s/
+              displayName:  'List Files in k8s Directory'
+
+

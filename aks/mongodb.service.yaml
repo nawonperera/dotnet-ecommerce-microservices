@@ -1,0 +1,69 @@
+# Specifies the Kubernetes API version used to create this resource.
+# "v1" is the API version used for core Kubernetes resources such as
+# Pods, Services, ConfigMaps, and Secrets.
+apiVersion: v1
+
+# Specifies the type of Kubernetes resource being created.
+# A Service provides a stable network endpoint for accessing Pods.
+# Even if the Pods are recreated and their IP addresses change,
+# the Service keeps the same name and IP, allowing reliable communication.
+kind: Service
+
+# Metadata contains identifying information about this Service.
+metadata:
+
+  # The name of the Service.
+  # Other Pods inside the cluster can access MongoDB using:
+  # mongodb:27017
+  # Other Pods inside the Kubernetes cluster can find this Service
+  # simply by using its name (mongodb), without needing to know its IP address.
+  name: mongodb
+
+  # The namespace where this Service will be created.
+  # The Service can only discover and communicate with resources
+  # inside this namespace unless configured otherwise.
+  namespace: ecommerce-namespace
+
+# Defines how the Service behaves.
+spec:
+
+  # The selector tells Kubernetes which Pods belong to this Service.
+  # Any Pod with the label:
+  #
+  # app: mongodb
+  #
+  # automatically becomes an endpoint for this Service.
+  # If multiple MongoDB Pods exist with this label,
+  # Kubernetes distributes requests among them.
+  selector:
+    app: mongodb
+
+  # Defines which ports the Service exposes.
+  ports:
+
+    # Creates one port mapping.
+    - protocol: TCP
+
+      # The port exposed by the Service.
+      # Other Pods connect to:
+      # mongodb:27017
+      port: 27017
+
+      # The port on the MongoDB container where the application
+      # is actually listening.
+      # Traffic arriving at the Service on port 27017
+      # is forwarded to port 27017 inside the MongoDB Pod.
+      targetPort: 27017
+
+  # ClusterIP is the default Service type.
+  #
+  # It creates an internal IP address that is only reachable
+  # from within the Kubernetes cluster.
+  #
+  # This means:
+  # ✔ Other Pods can connect to MongoDB.
+  # ✔ Users outside the cluster cannot access MongoDB directly.
+  #
+  # This is the recommended type for databases because databases
+  # usually should not be exposed to the public internet.
+  type: ClusterIP

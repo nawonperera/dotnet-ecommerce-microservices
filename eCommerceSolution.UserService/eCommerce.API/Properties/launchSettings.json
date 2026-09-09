@@ -1,0 +1,70 @@
+{
+  "profiles": {
+    "http": {
+      "commandName": "Project",
+      "launchBrowser": true,
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development",
+        "POSTGRES_PORT": "5432",
+        "POSTGRES_DATABASE": "eCommerceUsers",
+        "POSTGRES_USER": "postgres",
+        "POSTGRES_PASSWORD": "admin",
+        "POSTGRES_HOST": "localhost"
+      },
+      "dotnetRunMessages": true,
+      "applicationUrl": "http://localhost:5131"
+    },
+    "https": {
+      "commandName": "Project",
+      "launchBrowser": true,
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development",
+        "POSTGRES_PORT": "5432",
+        "POSTGRES_DATABASE": "eCommerceUsers",
+        "POSTGRES_USER": "postgres",
+        "POSTGRES_PASSWORD": "admin",
+        "POSTGRES_HOST": "localhost"
+      },
+      "dotnetRunMessages": true,
+      "applicationUrl": "https://localhost:7260;http://localhost:5131",
+      "launchUrl": "swagger"
+    },
+    "IIS Express": {
+      "commandName": "IISExpress",
+      "launchBrowser": true,
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development",
+        "POSTGRES_PORT": "5432",
+        "POSTGRES_DATABASE": "eCommerceUsers",
+        "POSTGRES_USER": "postgres",
+        "POSTGRES_PASSWORD": "admin",
+        "POSTGRES_HOST": "localhost"
+      }
+    },
+    "Container (Dockerfile)": {
+      "commandName": "Docker",
+      "launchBrowser": true,
+      "launchUrl": "{Scheme}://{ServiceHost}:{ServicePort}",
+      "environmentVariables": {
+        "ASPNETCORE_HTTPS_PORTS": "9091",
+        "ASPNETCORE_HTTP_PORTS": "9090",
+        "POSTGRES_PORT": "5432",
+        "POSTGRES_DATABASE": "eCommerceUsers",
+        "POSTGRES_USER": "postgres",
+        "POSTGRES_PASSWORD": "admin",
+        "POSTGRES_HOST": "localhost"
+      },
+      "publishAllPorts": true,
+      "useSSL": true
+    }
+  },
+  "$schema": "https://json.schemastore.org/launchsettings.json",
+  "iisSettings": {
+    "windowsAuthentication": false,
+    "anonymousAuthentication": true,
+    "iisExpress": {
+      "applicationUrl": "http://localhost:24251",
+      "sslPort": 44376
+    }
+  }
+}

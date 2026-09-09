@@ -1,0 +1,9 @@
+<Solution>
+  <Project Path="ApiGateway/ApiGateway.csproj" Id="56fe6992-3d19-49c9-a2a2-0c4249c0a896" />
+  <Project Path="BusinessLogicLayer/BusinessLogicLayer.csproj" />
+  <Project Path="DataAccessLayer/DataAccessLayer.csproj" />
+  <Project Path="docker-compose.dcproj">
+    <Build />
+  </Project>
+  <Project Path="OrdersMicroservice.API/OrdersMicroservice.API.csproj" />
+</Solution>
