@@ -5,8 +5,7 @@ resources:
 - repo: self
 
 variables:
-  # Container registry service connection established during pipeline creation
-  - name: dockerRegistryServiceConnection  #ID of the service connection (nawonecommerceregistry)
+  - name: dockerRegistryServiceConnection
     value: 'fb67587d-6211-425e-ba68-7261394b0a1c'
   - name: imageRepository
     value: 'products-microservice'
@@ -20,8 +19,6 @@ variables:
     value: 'ubuntu-latest'
   - name: windowImageName
     value: 'windows-latest'
-  - name: imageRepository
-    value: products-microservice
   - name: aksClusterName
     value: 'ecommerce-aks-cluster'
   - name: aksServiceConnectionName
@@ -30,7 +27,6 @@ variables:
     value: '$(Build.SourcesDirectory)/k8s/products-microservice-dev-deployment.yaml'
   - name: kubernetesNamespace
     value: 'dev'
-
 
 stages:
 - stage: Build
@@ -50,7 +46,7 @@ stages:
         containerRegistry: $(dockerRegistryServiceConnection)
         tags: |
           $(tag)
-        buildContext: $(Build.SourcesDirectory) # Tells Docker to build using the project's source code folder.
+        buildContext: $(Build.SourcesDirectory)
 
 - stage: Test
   displayName: Test and Publish results stage
@@ -80,27 +76,24 @@ stages:
             arguments: '--configuration Debug'
             configuration: 'debug'
 
-        - task: DotNetCoreCLI@2                     # Runs .NET CLI commands.
-          displayName: Run Unit Tests               # Name shown in the Azure DevOps pipeline.
-
+        - task: DotNetCoreCLI@2
+          displayName: Run Unit Tests
           inputs:
-            command: 'test'                         # Executes the 'dotnet test' command.
-            projects: '**/eCommerceSolution.ProductsService.slnx' # Finds and tests this solution file.
-            arguments: '--configuration Release --collect:"Code Coverage"' # Runs tests in Release mode and collects code coverage.
-            publishTestResults: true                # Publishes the test results to Azure DevOps.
+            command: 'test'
+            projects: '**/eCommerceSolution.ProductsService.slnx'
+            arguments: '--configuration Release --collect:"Code Coverage"'
+            publishTestResults: true
 
 - stage: DeployToDev
   displayName: Deploy to Dev
-  dependsOn: Test  #If Test is successfull, then only reach here
+  dependsOn: Test
   condition: and(succeeded('Build'), eq(variables['Build.SourceBranch'], 'refs/heads/dev'))
-            # Run this step only if the Build stage succeeded and the current branch is 'dev'.
   jobs:
   - deployment: DeploymentToDev
     displayName: Deployment to Dev Environment
     environment: dev
     strategy:
-      runOnce:  #if the source code is merged into dev branch(eg-feature branchs are merged into dev branch) this particular job should be triggered only once.
-                #(For one merge,only one time)
+      runOnce:
         deploy:
             steps:
             - checkout: self
@@ -110,5 +103,3 @@ stages:
                 echo "Listing contents of k8s"
                 ls -l $(Build.SourcesDirectory)/k8s/
               displayName:  'List Files in k8s Directory'
-
-
