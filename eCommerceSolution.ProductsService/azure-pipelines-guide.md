@@ -92,6 +92,7 @@ stages:
         containerRegistry: $(dockerRegistryServiceConnection)
         tags: |
           $(tag)
+          latest
         buildContext: $(Build.SourcesDirectory)
 ```
 - `steps`: The linear sequence of operations that make up a job.
@@ -100,8 +101,9 @@ stages:
 - `repository`: Sets the name of the container repository using the `$(imageRepository)` variable.
 - `dockerfile`: The exact file path to the `Dockerfile`.
 - `containerRegistry`: Passes the service connection ID to authenticate with the container registry. 
-- `tags`: Sets the tag on the built image using the `$(tag)` variable, which resolves to the build ID.
-- `buildContext`: Tells the Docker build process to use the root of the source directory as its context, allowing it to reference files correctly during the build.
+- `tags`: Sets the tag on the built image using the `$(tag)` variable, which resolves to the build ID. Because of the `|`, Azure DevOps reads the tags input as a list with two separate lines. When the pipeline runs, it will build your image and push it to Azure Container Registry with all two of those tags attached to it.(nawonecommerceregistry.azurecr.io/products-microservice:12345, nawonecommerceregistry.azurecr.io/products-microservice:latest)
+This means a system could pull products-microservice:latest to always get the newest code, or pull products-microservice:12345 if it needs to roll back to that exact specific build.
+- `buildContext`: Tells the Docker build process to use the root of the source directory as its context, allowing it to reference files correctly during the build.(This is the solution's folder.In this case it's `eCommerceSolution.ProductsService`)
 
 ---
 
@@ -122,7 +124,7 @@ stages:
       steps:
         - checkout: self
 ```
-- `checkout: self`: Explicitly tells the agent to download the repository source code so it is available for testing.
+- `checkout: self`: Explicitly tells the agent to download the repository source code so it is available for testing. This tells the pipeline that its primary repository is the exact same one hosting this YAML file.
 
 ```yaml
         - task: NuGetToolInstaller@1
@@ -163,7 +165,7 @@ stages:
             publishTestResults: true
 ```
 - `command: 'test'`: Executes `dotnet test` to run all unit tests in the solution.
-- `arguments: '--collect:"Code Coverage"'`: Instructs the test runner to generate code coverage metrics during execution.
+- `arguments: '--collect:"Code Coverage"'`: Instructs the test runner to generate code coverage metrics during execution.(Check how much of my code is actually being tested.)
 - `publishTestResults: true`: Automatically parses the test results and uploads them to the Azure DevOps test reporting dashboard.
 
 ---
@@ -177,9 +179,13 @@ stages:
   condition: and(succeeded('Build'), eq(variables['Build.SourceBranch'], 'refs/heads/dev'))
 ```
 - `dependsOn: Test`: Forces this stage to wait until the `Test` stage is completely finished. By default, stages run in parallel unless a dependency is specified.
-- `condition: ...`: Evaluates a custom expression to decide if the stage should run.
-- `succeeded('Build')`: Ensures the stage only runs if the `Build` stage passed.
-- `eq(variables['Build.SourceBranch'], 'refs/heads/dev')`: Ensures the deployment only happens if the pipeline was triggered by the `dev` branch.
+- `condition: and(...)`: This acts as a strict security guard before deployment, ensuring two rules are met. Let's break down each piece:
+  - `and(...)`: Means *both* of the rules inside the parentheses must be true.
+  - `succeeded('Build')`: Rule #1. It checks the history to make sure the previous `Build` stage was 100% successful.
+  - `eq(...)`: Stands for "equals". It compares two things to see if they are an exact match.
+  - `variables['Build.SourceBranch']`: This is the first thing being compared. It is a system variable that asks "Which branch triggered this pipeline?"
+  - `'refs/heads/dev'`: This is the second thing being compared. It is the full system name for your `dev` branch.
+  - **Summary**: "Only run this deployment if the Build succeeded AND the code came exactly from the dev branch."
 
 ```yaml
   jobs:
@@ -201,7 +207,27 @@ stages:
                 echo "Listing contents of k8s"
                 ls -l $(Build.SourcesDirectory)/k8s/
               displayName:  'List Files in k8s Directory'
+
+            - script: |
+                find $(Build.SourcesDirectory)/k8s/dev -type f \( -name "*.yaml" -o -name "*.yml" \) -exec sed -i 's/__TAG__/$(tag)/g' {} +
+              displayName: 'Replace image tag in all deployment files'
+
+            - task: Kubernetes@1
+              displayName: Deploy to dev namespace in kubernetes
+              inputs:
+                kubernetesServiceEndpoint: $(devAksServiceConnectionName)
+                kubernetesCluster: $(aksClusterName)
+                namespace: $(devKubernetesNamespace)
+                command: apply
+                arguments: '-f $(Build.SourcesDirectory)/k8s/dev/.'
 ```
 - `deploy`: A lifecycle hook within the deployment strategy that holds the steps to execute.
 - `script`: Executes a raw Bash script on the agent.
 - `ls -l $(Build.SourcesDirectory)/k8s/`: A diagnostic command that prints the contents of the `k8s` folder to the pipeline logs to verify the deployment manifests are present on the agent.
+- `script (Replace image tag)`: Executes a `find` command combined with `sed` to locate every `.yaml` or `.yml` file in the `k8s/dev` directory and dynamically replace the `__TAG__` placeholder with the actual build ID (`$(tag)`). This ensures Kubernetes deploys the exact container image we just built.
+- `task: Kubernetes@1`: Uses the official Azure DevOps Kubernetes task to interact with the AKS cluster.
+- `kubernetesServiceEndpoint`: Authenticates to the cluster using the service connection stored in the variable.
+- `kubernetesCluster`: Specifies the target AKS cluster (`$(aksClusterName)`).
+- `namespace`: Specifies the target namespace inside the cluster where the resources will be deployed.
+- `command: apply`: Maps to the `kubectl apply` command, instructing Kubernetes to create or update resources based on the provided manifest files.
+- `arguments: '-f $(Build.SourcesDirectory)/k8s/dev/.'`: Passes the folder containing the dynamically updated Kubernetes YAML files to the `apply` command, telling the cluster to execute all of them at once.

@@ -1,5 +1,11 @@
 trigger:
-- dev
+  branches:
+    include:
+      - dev
+      - qa
+      - uat
+      - staging
+      - production
 
 resources:
 - repo: self
@@ -15,18 +21,32 @@ variables:
     value: '$(Build.SourcesDirectory)/ProductsMicroServiceAPI/Dockerfile'
   - name: tag
     value: '$(Build.BuildId)'
-  - name: vmImageName
+  - name: linuxImageName
     value: 'ubuntu-latest'
-  - name: windowImageName
+  - name: windowsImageName
     value: 'windows-latest'
   - name: aksClusterName
     value: 'ecommerce-aks-cluster'
-  - name: aksServiceConnectionName
+  - name: devAksServiceConnectionName
     value: 'dev-ecommerce-aks-cluster-dev-1728475525366'
-  - name: deploymentFile
-    value: '$(Build.SourcesDirectory)/k8s/products-microservice-dev-deployment.yaml'
-  - name: kubernetesNamespace
+  - name: qaAksServiceConnectionName
+    value: 'qa-ecommerce-aks-cluster-qa-1728475982025'
+  - name: uatAksServiceConnectionName
+    value: 'uat-ecommerce-aks-cluster-uat-1728475742545'
+  - name: stagingAksServiceConnectionName
+    value: 'staging-ecommerce-aks-cluster-staging-1728475932481'
+  - name: productionAksServiceConnectionName
+    value: 'production-ecommerce-aks-cluster-production-1728475483682'
+  - name: devKubernetesNamespace
     value: 'dev'
+  - name: qaKubernetesNamespace
+    value: 'qa'
+  - name: uatKubernetesNamespace
+    value: 'uat'
+  - name: stagingKubernetesNamespace
+    value: 'staging'
+  - name: prodKubernetesNamespace
+    value: 'prod'
 
 stages:
 - stage: Build
@@ -35,7 +55,7 @@ stages:
   - job: Build
     displayName: Docker Build
     pool:
-      vmImage: $(vmImageName)
+      vmImage: $(linuxImageName)
     steps:
     - task: Docker@2
       displayName: Build and push an image to container registry
@@ -46,6 +66,7 @@ stages:
         containerRegistry: $(dockerRegistryServiceConnection)
         tags: |
           $(tag)
+          latest
         buildContext: $(Build.SourcesDirectory)
 
 - stage: Test
@@ -54,7 +75,7 @@ stages:
     - job: RunTest
       displayName: Run Unit Tests
       pool:
-        vmImage: $(windowImageName)
+        vmImage: $(windowsImageName)
       steps:
         - checkout: self
           displayName: Checkout source code
@@ -101,5 +122,18 @@ stages:
         
             - script: |
                 echo "Listing contents of k8s"
-                ls -l $(Build.SourcesDirectory)/k8s/
-              displayName:  'List Files in k8s Directory'
+                ls -l $(Build.SourcesDirectory)/k8s/dev
+              displayName:  'List Files in k8s/dev Directory'
+
+            - script: |
+                find $(Build.SourcesDirectory)/k8s/dev -type f \( -name "*.yaml" -o -name "*.yml" \) -exec sed -i 's/__TAG__/$(tag)/g' {} +
+              displayName: 'Replace image tag in all deployment files'
+
+            - task: Kubernetes@1
+              displayName: Deploy to dev namespace in kubernetes
+              inputs:
+                kubernetesServiceEndpoint: $(devAksServiceConnectionName)
+                kubernetesCluster: $(aksClusterName)
+                namespace: $(devKubernetesNamespace)
+                command: apply
+                arguments: '-f $(Build.SourcesDirectory)/k8s/dev/.'
