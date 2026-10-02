@@ -37,8 +37,28 @@ variables:
     value: 'staging-ecommerce-aks-cluster-staging-1728475932481'
   - name: productionAksServiceConnectionName
     value: 'production-ecommerce-aks-cluster-production-1728475483682'
+  - name: resourceGroupServiceConnectionName
+    value: 'ecommerce-resource-group-connection'
+  - name: keyVaultName
+    value: 'products-pipeline-kv'
 
 stages:
+- stage: InitializeKeyVault
+  displayName: Initialize Key Vault Secrets
+  jobs:
+  - job: FetchSecrets
+    displayName: Fetch Key Vault Secrets
+    pool:
+      vmImage: '$(linuxImageName)'
+    steps:
+      - task: AzureKeyVault@2
+        displayName: Fetch Key Vault Secrets
+        inputs:
+          azureSubscription: $(resourceGroupServiceConnectionName)
+          keyVaultName: '$(keyVaultName)'
+          SecretsFilter: '*'
+          RunAsPreJob: true
+
 - stage: Build
   displayName: Build and push stage
   jobs:

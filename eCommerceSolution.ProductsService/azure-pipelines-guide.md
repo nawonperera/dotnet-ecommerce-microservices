@@ -41,18 +41,50 @@ variables:
     value: 'windows-latest'
   - name: aksClusterName
     value: 'ecommerce-aks-cluster'
-  # ... (Environment specific Service Connections and Namespaces)
+  # ... (Environment specific Service Connections)
+  - name: resourceGroupServiceConnectionName
+    value: 'ecommerce-resource-group-connection'
+  - name: keyVaultName
+    value: 'products-pipeline-kv'
 ```
 - `variables`: A block used to define reusable key-value pairs to avoid hardcoding values throughout the pipeline.
 - `linuxImageName` / `windowsImageName`: The VM images used to run the pipeline agents. (Notice these were renamed to differentiate the OS types).
-- **Environment Connections & Namespaces**: The pipeline now defines a separate Azure Kubernetes Service (AKS) connection ID and a target Kubernetes namespace (`dev`, `qa`, `uat`, `staging`, `prod`) for each stage of the lifecycle. This isolates the deployments from each other securely.
+- **Environment Connections**: The pipeline now defines a separate Azure Kubernetes Service (AKS) connection ID for each stage of the lifecycle. This isolates the deployments from each other securely.
+- **Key Vault Connections**: Variables for accessing the Azure Resource Group and Key Vault to fetch secure secrets before building.
 
 ---
 
-### 4. Stage 1: Build
+### 4. Stage 1: Initialize Key Vault
 
 ```yaml
 stages:
+- stage: InitializeKeyVault
+  displayName: Initialize Key Vault Secrets
+  jobs:
+  - job: FetchSecrets
+    displayName: Fetch Key Vault Secrets
+    pool:
+      vmImage: '$(linuxImageName)'
+    steps:
+      - task: AzureKeyVault@2
+        displayName: Fetch Key Vault Secrets
+        inputs:
+          azureSubscription: $(resourceGroupServiceConnectionName)
+          keyVaultName: '$(keyVaultName)'
+          SecretsFilter: '*'
+          RunAsPreJob: true
+```
+- `stages`: The highest level of organization in a pipeline, representing major phases of the CI/CD process.
+- `stage: InitializeKeyVault`: A stage used to fetch secrets from Azure Key Vault before running the rest of the pipeline.
+- `task: AzureKeyVault@2`: Connects to Azure Key Vault using the provided subscription service connection and fetches the secrets.
+- `SecretsFilter: '*'`: Instructs the task to fetch all secrets from the specified Key Vault.
+- `RunAsPreJob: true`: Ensures that these secrets are fetched and made available before any other jobs run.
+
+---
+
+### 5. Stage 2: Build
+
+```yaml
 - stage: Build
   displayName: Build and push stage
   jobs:
@@ -86,7 +118,7 @@ stages:
 
 ---
 
-### 5. Stage 2: Test
+### 6. Stage 3: Test
 
 ```yaml
 - stage: Test
@@ -125,7 +157,7 @@ stages:
 
 ---
 
-### 6. Stages 3-7: Multi-Environment Deployments
+### 7. Stages 4-8: Multi-Environment Deployments
 
 The pipeline now contains multiple deployment stages (`DeployToDev`, `DeployToQA`, `DeployToUAT`, `DeployToStaging`, `DeployToProduction`). Each stage functions identically but targets a different environment. Here is a breakdown of the standard deployment pattern used for all of them:
 
@@ -134,6 +166,8 @@ The pipeline now contains multiple deployment stages (`DeployToDev`, `DeployToQA
   displayName: Deploy to Dev
   dependsOn: Test
   condition: and(succeeded('Build'), eq(variables['Build.SourceBranch'], 'refs/heads/dev'))
+  variables:
+  - group: products-microservice-dev
 ```
 - `dependsOn: Test`: Forces this stage to wait until the `Test` stage is completely finished.
 - `condition: and(...)`: This acts as a strict security guard before deployment, ensuring two rules are met. Let's break down each piece:
@@ -141,8 +175,9 @@ The pipeline now contains multiple deployment stages (`DeployToDev`, `DeployToQA
   - `succeeded('Build')`: Rule #1. It checks the history to make sure the previous `Build` stage was 100% successful.
   - `eq(...)`: Stands for "equals". It compares two things to see if they are an exact match.
   - `variables['Build.SourceBranch']`: This is the first thing being compared. It is a system variable that asks "Which branch triggered this pipeline?"
-  - `'refs/heads/dev'`: This is the second thing being compared. *(Note: For QA, this is 'refs/heads/qa', for UAT 'refs/heads/uat', etc.)*
+  - `'refs/heads/dev'`: This is the second thing being compared. *(Note: For QA, this is 'refs/heads/qa', for UAT 'refs/heads/uat', staging is 'refs/heads/staging', prod is 'refs/heads/prod')*
   - **Summary**: "Only run this deployment if the Build succeeded AND the code came exactly from the dev branch."
+- `variables - group`: Links an Azure DevOps Variable Group (e.g., `products-microservice-dev`) to this stage, securely injecting environment-specific values like namespaces.
 
 ```yaml
   jobs:
@@ -184,12 +219,12 @@ The pipeline now contains multiple deployment stages (`DeployToDev`, `DeployToQA
               inputs:
                 kubernetesServiceEndpoint: $(devAksServiceConnectionName)
                 kubernetesCluster: $(aksClusterName)
-                namespace: $(devKubernetesNamespace)
+                namespace: $(kubernetes-namespace)
                 command: apply
                 arguments: '-f $(Build.SourcesDirectory)/k8s/dev/.'
 ```
 - `task: Kubernetes@1`: Uses the official Azure DevOps Kubernetes task to interact with the AKS cluster.
 - `kubernetesServiceEndpoint`: Authenticates to the cluster using the service connection stored in the variable (`devAksServiceConnectionName`, `qaAksServiceConnectionName`, etc.).
-- `namespace`: Specifies the target namespace inside the cluster where the resources will be deployed (`dev`, `qa`, `uat`, etc.).
+- `namespace`: Specifies the target namespace inside the cluster where the resources will be deployed. This uses the `$(kubernetes-namespace)` variable provided by the environment-specific Variable Group.
 - `command: apply`: Maps to the `kubectl apply` command, instructing Kubernetes to create or update resources based on the provided manifest files.
 - `arguments`: Passes the environment-specific folder containing the dynamically updated Kubernetes YAML files to the `apply` command.
