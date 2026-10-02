@@ -16,7 +16,7 @@ spec:
     spec:
       containers:
       - name: products-microservice
-        image: harshaecommerceregistry.azurecr.io/products-microservice:__TAG__
+        image: nawonecommerceregistry.azurecr.io/products-microservice:__TAG__
         ports:
         - containerPort: 8080
         env:

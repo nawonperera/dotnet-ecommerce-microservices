@@ -16,6 +16,6 @@ spec:
     spec:
       containers:
       - name: apigateway
-        image: harshaecommerceregistry.azurecr.io/apigateway:latest
+        image: nawonecommerceregistry.azurecr.io/apigateway:latest
         ports:
         - containerPort: 8080
